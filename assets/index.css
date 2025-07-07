@@ -1,0 +1,49 @@
+
+body {
+  background-color: #f9fafb;
+  font-family: sans-serif;
+  color: #1f2937;
+  margin: 0;
+  padding: 2rem;
+}
+h1, h2 {
+  color: #065f46;
+}
+.card {
+  margin: 0.5rem;
+  padding: 0.5rem;
+  background: white;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+}
+.card.hero {
+  display: inline-block;
+  vertical-align: top;
+  text-align: center;
+}
+.card img {
+  width: 120px;
+  height: auto;
+  border-radius: 4px;
+}
+img.tapped {
+  transform: rotate(90deg) scale(0.85);
+}
+button {
+  margin: 0.25rem;
+  padding: 0.5rem 1rem;
+  border: none;
+  background: #10b981;
+  color: white;
+  border-radius: 4px;
+  cursor: pointer;
+}
+button:hover {
+  background: #059669;
+}
+button.reset {
+  background-color: #ef4444;
+}
+.card.gray {
+  background-color: #f3f4f6;
+}
