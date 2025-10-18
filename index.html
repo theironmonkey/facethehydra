@@ -38,8 +38,11 @@
     .gy-items{display:flex; flex-wrap:wrap; gap:8px}
     .gy-chip{position:relative; width:160px; border:1px solid #2b3245; border-radius:8px; padding:4px}
       /* Make Hydra head cards the same visual size as hero cards */
-    #heroGrid, #headsGrid{ grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
-    #heroGrid .card, #headsGrid .card{ width:100%; margin:0; }
+    #heroGrid, #headsGrid{ 
+      grid-template-columns: repeat(auto-fit, minmax(240px, 240px));
+      justify-content: center;
+    }
+    #heroGrid .card, #headsGrid .card{ width:240px; margin:0; }
     #heroGrid .card img, #headsGrid .card img{ width:100%; aspect-ratio: 63 / 88; height:auto; object-fit: cover; display:block; }
 </style>
 </head>
@@ -206,7 +209,7 @@
       gyEarlier.innerHTML = '';
       if(graveyard.length===0) return;
       const last = graveyard[graveyard.length-1];
-      const big = document.createElement('img'); big.src = cardImgUrl(last.name); big.alt = last.name; big.style.width='200px'; big.style.border='1px solid #2b3245'; big.style.borderRadius='8px';
+      const big = document.createElement('img'); big.src = cardImgUrl(last.name); big.alt = last.name; big.style.width='240px'; big.style.border='1px solid #2b3245'; big.style.borderRadius='8px';
       gyLatest.appendChild(big);
       graveyard.slice(0,-1).forEach(c=>{
         const chip = document.createElement('div'); chip.className='gy-chip hoverwrap';
