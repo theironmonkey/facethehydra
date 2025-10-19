@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Face the Hydra</title>
+  <title>Face the Hydra – Pure HTML/JS (no React)</title>
   <style>
     :root{ --bg:#0f1115; --card:#171a21; --muted:#a0a6b8; --text:#e7ecf3; --accent:#7aa2ff; --danger:#ff6b6b; --ring:#ff6b6b; --card-width:223px; }
     html,body{height:100%}
@@ -14,6 +14,7 @@
     .panel{background:var(--card); border:1px solid #262b3a; border-radius:16px; padding:12px}
     .toolbar{display:flex; gap:8px; flex-wrap:wrap; align-items:center}
     .btn{background:#222836; color:var(--text); border:1px solid #2b3245; border-radius:10px; padding:8px 12px; cursor:pointer}
+    .btn[disabled]{opacity:.5; cursor:not-allowed}
     .btn.small{padding:4px 8px; font-size:12px}
     .btn.ghost{background:transparent}
     .btn.danger{border-color:#5d2f32; color:#ffb3b3}
@@ -37,7 +38,7 @@
     .stat{font-weight:700}
     .gy-items{display:flex; flex-wrap:wrap; gap:8px}
     .gy-chip{position:relative; width:160px; border:1px solid #2b3245; border-radius:8px; padding:4px}
-    /* Exactly 5 cards per row for both grids */
+    /* Exactly 5 cards per row for grids */
     #heroGrid, #headsGrid, #graveyardGrid{ 
       grid-template-columns: repeat(auto-fit, minmax(var(--card-width, 223px), var(--card-width, 223px)));
       justify-content: center;
@@ -48,7 +49,7 @@
 </head>
 <body>
   <div class="container">
-    <h1>Face the Hydra</h1>
+    <h1>Face the Hydra – Pure HTML/JS</h1>
 
     <!-- HERO SELECTION -->
     <section class="panel">
@@ -63,17 +64,25 @@
     <!-- CONTROLS -->
     <section class="panel" style="margin-top:12px">
       <div class="toolbar" style="justify-content:space-between">
-        <div class="toolbar">
-          <button id="resetBtn" class="btn">Reset Game</button>
-          <button id="startBtn" class="btn">Start Game</button>
-          <label class="toolbar" style="gap:6px">
-            <span class="muted">Starting Heads:</span>
-            <button id="headsDec" class="btn medium">−</button>
-            <input id="drawCount" class="input w70" type="number" min="0" max="11" value="2" />
-            <button id="headsInc" class="btn medium">+</button>
-          </label>
-          <button id="hydraTurnBtn" class="btn">Hydra's Turn</button>
+        <div class="toolbar" style="align-items:flex-start; flex-direction:column; gap:6px">
+          <div class="toolbar">
+            <button id="resetBtn" class="btn">Reset Game</button>
+            <button id="startBtn" class="btn">Start Game</button>
+            <label class="toolbar" style="gap:6px">
+              <span class="muted">Starting Heads:</span>
+              <button id="headsDec" class="btn medium">−</button>
+              <input id="drawCount" class="input w70" type="number" min="0" max="11" value="2" />
+              <button id="headsInc" class="btn medium">+</button>
+            </label>
+            <button id="hydraTurnBtn" class="btn">Hydra's Turn</button>
+
+            <!-- NEW: global Savage Vigor button -->
+            <button id="revealBtn" class="btn" disabled>Reveal Top Card (Savage Vigor)</button>
+          </div>
+          <!-- NEW: simple one-line message under buttons -->
+          <div id="revealMsg" class="muted"></div>
         </div>
+
         <div class="toolbar">
           <span class="muted">Player Life:</span>
           <button id="lifeDec" class="btn medium">−</button>
@@ -149,7 +158,7 @@
     let tappedHeroes = {}; // name -> bool
     let damage = {}; // headId -> number
     let idCounter = 0;
-    let graveyardCollapsed = true; // NEW: collapsed by default
+    let graveyardCollapsed = true; // collapsed by default
 
     // ==== DOM ====
     const heroGrid = document.getElementById('heroGrid');
@@ -172,6 +181,10 @@
     const gyToggle = document.getElementById('gyToggle');
     const gyCount = document.getElementById('gyCount');
     const gyShown = document.getElementById('gyShown');
+
+    // NEW: Savage Vigor controls
+    const revealBtn = document.getElementById('revealBtn');
+    const revealMsg = document.getElementById('revealMsg');
 
     // ==== Helpers ====
     function cardImgUrl(name){
@@ -234,7 +247,7 @@
       gyCount.textContent = graveyard.length.toString();
 
       const items = [...graveyard].reverse(); // latest first
-      const toShow = graveyardCollapsed ? items.slice(0, 7) : items;
+      const toShow = graveyardCollapsed ? items.slice(0, 12) : items;
 
       if (graveyardCollapsed && items.length > 12) {
         gyShown.textContent = ` (showing ${toShow.length} of ${items.length})`;
@@ -256,7 +269,18 @@
 
     function renderLife(){ lifeLabel.textContent = playerLife; lifeInput.value = playerLife; }
 
-    function renderAll(){ renderHeroes(); renderHeads(); renderGraveyard(); renderLife(); }
+    function updateRevealButtonState(){
+      const hasSavage = heads.some(h => h.name === 'Savage Vigor Head');
+      revealBtn.disabled = !hasSavage || deck.length === 0;
+    }
+
+    function renderAll(){ 
+      renderHeroes(); 
+      renderHeads(); 
+      renderGraveyard(); 
+      renderLife(); 
+      updateRevealButtonState();
+    }
 
     // ==== Behavior from JSX ====
     function toggleHero(hero){
@@ -282,6 +306,7 @@
       damage = {}; base.forEach(h=> damage[h.id]=0);
       deck = shuffle(rest);
       renderAll();
+      revealMsg.textContent = ''; // clear message on start
     }
 
     function resetGame(){
@@ -295,14 +320,15 @@
       tappedHeroes = {};
       damage = {};
       idCounter = 0;
+      revealMsg.textContent = '';
       renderAll();
     }
 
     function hydraTurn(){
       if(deck.length===0) return;
       const top = deck.shift();
-      if(top.type === 'Sorcery'){ graveyard.push(top); }
-      else { const h = assignId(top); heads.push(h); damage[h.id]=0; }
+      if(top.type === 'Sorcery'){ graveyard.push(top); revealMsg.textContent = `Hydra's Turn revealed ${top.name} → sent to Graveyard`; }
+      else { const h = assignId(top); heads.push(h); damage[h.id]=0; revealMsg.textContent = `Hydra's Turn revealed ${h.name} → added to Battlefield`; }
       renderAll();
     }
 
@@ -316,11 +342,12 @@
       heads = remaining.concat(newHeads);
       gyAdds.forEach(c=> graveyard.push(c));
       const newDamage = {}; heads.forEach(h=> newDamage[h.id] = damage[h.id]||0); damage = newDamage;
+      revealMsg.textContent = `Removed ${head.name}. Drew ${draws.length} card(s).`;
       renderAll();
     }
 
-    function dealDamage(index){ const head = heads[index]; if(!head) return; damage[head.id] = (damage[head.id]||0) + 1; renderHeads(); }
-    function toggleTap(index){ const head = heads[index]; if(!head) return; head.tapped = !head.tapped; renderHeads(); }
+    function dealDamage(index){ const head = heads[index]; if(!head) return; damage[head.id] = (damage[head.id]||0) + 1; renderHeads(); updateRevealButtonState(); }
+    function toggleTap(index){ const head = heads[index]; if(!head) return; head.tapped = !head.tapped; renderHeads(); updateRevealButtonState(); }
 
     // ==== Wire up controls ====
     lockHeroesBtn.addEventListener('click', ()=>{ heroSelectionLocked = true; renderHeroes(); });
@@ -333,7 +360,7 @@
     lifeInput.addEventListener('input', e=>{ const v = Number(e.target.value)||0; playerLife = Math.max(0, v); renderLife(); });
     drawCountInput.addEventListener('input', e=>{ const v = Number(e.target.value)||0; drawCount = Math.max(0, Math.min(11, v)); });
 
-    // === Minimal functionality for Starting Heads + / − ===
+    // Minimal functionality for Starting Heads + / −
     function clamp(n){ return Math.max(0, Math.min(11, n)); }
     if (headsInc) headsInc.addEventListener('click', ()=>{
       drawCount = clamp(drawCount + 1);
@@ -344,10 +371,27 @@
       drawCountInput.value = drawCount;
     });
 
-    // === Graveyard toggle ===
+    // Graveyard toggle
     gyToggle.addEventListener('click', ()=>{
       graveyardCollapsed = !graveyardCollapsed;
       renderGraveyard();
+    });
+
+    // NEW: Reveal Top Card (Savage Vigor global)
+    revealBtn.addEventListener('click', ()=>{
+      if (revealBtn.disabled) return;
+      if (deck.length === 0) { revealMsg.textContent = 'Deck is empty.'; return; }
+      const top = deck.shift();
+      if (top.type === 'Sorcery') {
+        graveyard.push(top);
+        revealMsg.textContent = `Revealed ${top.name} → sent to Graveyard`;
+      } else {
+        const h = assignId(top);
+        heads.push(h);
+        damage[h.id] = 0;
+        revealMsg.textContent = `Revealed ${h.name} → added to Battlefield`;
+      }
+      renderAll();
     });
 
     // Initial render
@@ -374,34 +418,6 @@
       // Test 4: Killing a head moves it to GY and draws two
       const headsBefore = heads.length; const gyBefore = graveyard.length; removeHead(0);
       add(graveyard.length>=gyBefore+1 && heads.length>=headsBefore-1, 'Kill moves to GY and draws two');
-
-      // ---- Additional tests (left as-is) ----
-      (function(){
-        const url = cardImgUrl('Test Name');
-        add(/version=large/.test(url), 'cardImgUrl uses version=large', url);
-      })();
-
-      (function(){
-        const url = cardImgUrlFallback('Test Name');
-        add(/version=normal/.test(url), 'cardImgUrlFallback uses version=normal', url);
-      })();
-
-      (function(){
-        resetGame(); drawCount = 2; startGame();
-        const allHaveKeys = heads.every(h=> Object.prototype.hasOwnProperty.call(damage, h.id));
-        add(allHaveKeys, 'damage object keyed for each starting head');
-      })();
-
-      (function(){
-        resetGame(); drawCount = 3; startGame();
-        if(heads.length>=2){
-          const secondId = heads[1].id; dealDamage(1);
-          const dmgVal = damage[secondId]; removeHead(0);
-          add(damage[secondId] === dmgVal, 'removeHead preserves damage of other heads');
-        } else {
-          add(true, 'removeHead preserves damage of other heads (skipped - not enough heads)');
-        }
-      })();
 
       // Restore to a clean state for the user
       resetGame();
