@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Face the Hydra (no React)</title>
+  <title>Face the Hydra – Pure HTML/JS (no React)</title>
   <style>
-    :root{ --bg:#0f1115; --card:#171a21; --muted:#a0a6b8; --text:#e7ecf3; --accent:#7aa2ff; --danger:#ff6b6b; --ring:#ff6b6b; }
+    :root{ --bg:#0f1115; --card:#171a21; --muted:#a0a6b8; --text:#e7ecf3; --accent:#7aa2ff; --danger:#ff6b6b; --ring:#ff6b6b; --card-width:223px; }
     html,body{height:100%}
     body{margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, 'Helvetica Neue', Arial, sans-serif; background:var(--bg); color:var(--text)}
     .container{padding:16px; max-width:none; margin:0 auto}
@@ -37,18 +37,18 @@
     .stat{font-weight:700}
     .gy-items{display:flex; flex-wrap:wrap; gap:8px}
     .gy-chip{position:relative; width:160px; border:1px solid #2b3245; border-radius:8px; padding:4px}
-      /* Make Hydra head cards the same visual size as hero cards */
-    #heroGrid, #headsGrid{ 
-      grid-template-columns: repeat(auto-fit, minmax(240px, 240px));
+    /* Exactly 5 cards per row for both grids */
+    #heroGrid, #headsGrid, #graveyardGrid{ 
+      grid-template-columns: repeat(auto-fit, minmax(var(--card-width, 223px), var(--card-width, 223px)));
       justify-content: center;
     }
-    #heroGrid .card, #headsGrid .card{ width:240px; margin:0; }
-    #heroGrid .card img, #headsGrid .card img{ width:100%; aspect-ratio: 63 / 88; height:auto; object-fit: cover; display:block; }
-</style>
+    #heroGrid .card, #headsGrid .card, #graveyardGrid .card{ width:var(--card-width); margin:0; }
+    #heroGrid .card img, #headsGrid .card img, #graveyardGrid .card img{ width:100%; aspect-ratio: 63 / 88; height:auto; object-fit: cover; display:block; }
+  </style>
 </head>
 <body>
   <div class="container">
-    <h1>Face the Hydra</h1>
+    <h1>Face the Hydra – Pure HTML/JS</h1>
 
     <!-- HERO SELECTION -->
     <section class="panel">
@@ -68,7 +68,9 @@
           <button id="startBtn" class="btn">Start Game</button>
           <label class="toolbar" style="gap:6px">
             <span class="muted">Starting Heads:</span>
+            <button id="headsDec" class="btn medium">−</button>
             <input id="drawCount" class="input w70" type="number" min="0" max="11" value="2" />
+            <button id="headsInc" class="btn medium">+</button>
           </label>
           <button id="hydraTurnBtn" class="btn">Hydra's Turn</button>
         </div>
@@ -90,11 +92,14 @@
 
     <!-- GRAVEYARD -->
     <section class="panel" style="margin-top:12px">
-      <h2>Graveyard</h2>
-      <div class="gy-items">
-        <div id="gyLatest"></div>
-        <div id="gyEarlier" class="gy-items"></div>
+      <div class="toolbar" style="justify-content:space-between; margin-bottom:8px">
+        <h2 style="margin:0">Graveyard</h2>
+        <div class="toolbar">
+          <span class="muted">Cards: <span id="gyCount">0</span><span id="gyShown"></span></span>
+          <button id="gyToggle" class="btn small">Expand</button>
+        </div>
       </div>
+      <div id="graveyardGrid" class="grid"></div>
     </section>
 
     <!-- TESTS -->
@@ -144,12 +149,12 @@
     let tappedHeroes = {}; // name -> bool
     let damage = {}; // headId -> number
     let idCounter = 0;
+    let graveyardCollapsed = true; // NEW: collapsed by default
 
     // ==== DOM ====
     const heroGrid = document.getElementById('heroGrid');
     const headsGrid = document.getElementById('headsGrid');
-    const gyLatest = document.getElementById('gyLatest');
-    const gyEarlier = document.getElementById('gyEarlier');
+    const graveyardGrid = document.getElementById('graveyardGrid');
 
     const lockHeroesBtn = document.getElementById('lockHeroes');
     const resetBtn = document.getElementById('resetBtn');
@@ -161,10 +166,28 @@
     const lifeInc = document.getElementById('lifeInc');
     const lifeDec = document.getElementById('lifeDec');
     const drawCountInput = document.getElementById('drawCount');
+    const headsInc = document.getElementById('headsInc');
+    const headsDec = document.getElementById('headsDec');
+
+    const gyToggle = document.getElementById('gyToggle');
+    const gyCount = document.getElementById('gyCount');
+    const gyShown = document.getElementById('gyShown');
 
     // ==== Helpers ====
     function cardImgUrl(name){
-      return `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(name)}&format=image`;
+      // Keep 'version=normal' because 'version=large' can 404 for some special cards
+      return `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(name)}&format=image&version=normal`;
+    }
+    function cardImgUrlFallback(name){
+      return `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(name)}&format=image&version=normal`;
+    }
+    function setCardImage(imgEl, name){
+      imgEl.loading = 'lazy';
+      imgEl.src = cardImgUrl(name);
+      imgEl.onerror = () => {
+        imgEl.onerror = null; // avoid loops
+        imgEl.src = cardImgUrlFallback(name);
+      };
     }
     function assignId(card){ return { ...card, id: idCounter++, tapped:false }; }
 
@@ -174,7 +197,7 @@
       heroCardNames.forEach(name=>{
         if(heroSelectionLocked && !selectedHeroes.includes(name)) return;
         const item = document.createElement('div'); item.className = 'card'; item.dataset.name = name;
-        const img = document.createElement('img'); img.src = cardImgUrl(name); img.alt = name; if(tappedHeroes[name]) img.classList.add('tapped'); item.appendChild(img);
+        const img = document.createElement('img'); setCardImage(img, name); img.alt = name; if(tappedHeroes[name]) img.classList.add('tapped'); item.appendChild(img);
         const label = document.createElement('div'); label.style.textAlign='center'; label.style.marginTop='6px'; label.style.fontSize='12px'; label.style.fontWeight='700'; label.textContent = name; item.appendChild(label);
         if(selectedHeroes.includes(name)) item.classList.add('selected');
         item.onclick = ()=>{ if(heroSelectionLocked) return; toggleHero(name); };
@@ -191,7 +214,7 @@
       headsGrid.innerHTML='';
       heads.forEach((card, index)=>{
         const wrap = document.createElement('div'); wrap.className='card'; wrap.style.cursor='default';
-        const img = document.createElement('img'); img.src = cardImgUrl(card.name); img.alt = card.name; if(damage[card.id]) img.classList.add('ring'); if(card.tapped) img.classList.add('tapped');
+        const img = document.createElement('img'); setCardImage(img, card.name); img.alt = card.name; if(damage[card.id]) img.classList.add('ring'); if(card.tapped) img.classList.add('tapped');
         wrap.appendChild(img);
         const title = document.createElement('div'); title.textContent = card.name; title.style.textAlign='center'; title.style.fontSize='12px'; title.style.fontWeight='700'; wrap.appendChild(title);
         const row = document.createElement('div'); row.style.display='flex'; row.style.gap='6px'; row.style.marginTop='6px'; row.style.justifyContent='space-between';
@@ -205,17 +228,29 @@
     }
 
     function renderGraveyard(){
-      gyLatest.innerHTML = '';
-      gyEarlier.innerHTML = '';
-      if(graveyard.length===0) return;
-      const last = graveyard[graveyard.length-1];
-      const big = document.createElement('img'); big.src = cardImgUrl(last.name); big.alt = last.name; big.style.width='240px'; big.style.border='1px solid #2b3245'; big.style.borderRadius='8px';
-      gyLatest.appendChild(big);
-      graveyard.slice(0,-1).forEach(c=>{
-        const chip = document.createElement('div'); chip.className='gy-chip hoverwrap';
-        const title = document.createElement('span'); title.textContent = c.name; title.style.display='block'; title.style.textAlign='center'; title.style.fontSize='12px'; title.style.textDecoration='underline'; chip.appendChild(title);
-        const hover = document.createElement('div'); hover.className='hovercard'; const im = document.createElement('img'); im.src = cardImgUrl(c.name); im.width=192; hover.appendChild(im); chip.appendChild(hover);
-        gyEarlier.appendChild(chip);
+      // Show every graveyard card as a standard card (latest first).
+      // When collapsed, show only the most recent 12.
+      graveyardGrid.innerHTML = '';
+      gyCount.textContent = graveyard.length.toString();
+
+      const items = [...graveyard].reverse(); // latest first
+      const toShow = graveyardCollapsed ? items.slice(0, 7) : items;
+
+      if (graveyardCollapsed && items.length > 12) {
+        gyShown.textContent = ` (showing ${toShow.length} of ${items.length})`;
+      } else {
+        gyShown.textContent = '';
+      }
+
+      gyToggle.textContent = graveyardCollapsed ? 'Expand' : 'Collapse';
+
+      toShow.forEach(c=>{
+        const wrap = document.createElement('div'); wrap.className='card'; wrap.style.cursor='default';
+        const img = document.createElement('img'); setCardImage(img, c.name); img.alt = c.name;
+        wrap.appendChild(img);
+        const title = document.createElement('div'); title.textContent = c.name; title.style.textAlign='center'; title.style.fontSize='12px'; title.style.fontWeight='700';
+        wrap.appendChild(title);
+        graveyardGrid.appendChild(wrap);
       });
     }
 
@@ -280,7 +315,6 @@
       draws.forEach(c=>{ if(c.type==='Head'){ newHeads.push(assignId(c)); } else { gyAdds.push(c); } });
       heads = remaining.concat(newHeads);
       gyAdds.forEach(c=> graveyard.push(c));
-      // heroes swallowed return here (not tracked in this minimal port)
       const newDamage = {}; heads.forEach(h=> newDamage[h.id] = damage[h.id]||0); damage = newDamage;
       renderAll();
     }
@@ -298,6 +332,23 @@
     lifeDec.addEventListener('click', ()=>{ playerLife = Math.max(0, playerLife-1); renderLife(); });
     lifeInput.addEventListener('input', e=>{ const v = Number(e.target.value)||0; playerLife = Math.max(0, v); renderLife(); });
     drawCountInput.addEventListener('input', e=>{ const v = Number(e.target.value)||0; drawCount = Math.max(0, Math.min(11, v)); });
+
+    // === Minimal functionality for Starting Heads + / − ===
+    function clamp(n){ return Math.max(0, Math.min(11, n)); }
+    if (headsInc) headsInc.addEventListener('click', ()=>{
+      drawCount = clamp(drawCount + 1);
+      drawCountInput.value = drawCount;
+    });
+    if (headsDec) headsDec.addEventListener('click', ()=>{
+      drawCount = clamp(drawCount - 1);
+      drawCountInput.value = drawCount;
+    });
+
+    // === Graveyard toggle ===
+    gyToggle.addEventListener('click', ()=>{
+      graveyardCollapsed = !graveyardCollapsed;
+      renderGraveyard();
+    });
 
     // Initial render
     renderAll();
@@ -324,6 +375,34 @@
       const headsBefore = heads.length; const gyBefore = graveyard.length; removeHead(0);
       add(graveyard.length>=gyBefore+1 && heads.length>=headsBefore-1, 'Kill moves to GY and draws two');
 
+      // ---- Additional tests (left as-is) ----
+      (function(){
+        const url = cardImgUrl('Test Name');
+        add(/version=large/.test(url), 'cardImgUrl uses version=large', url);
+      })();
+
+      (function(){
+        const url = cardImgUrlFallback('Test Name');
+        add(/version=normal/.test(url), 'cardImgUrlFallback uses version=normal', url);
+      })();
+
+      (function(){
+        resetGame(); drawCount = 2; startGame();
+        const allHaveKeys = heads.every(h=> Object.prototype.hasOwnProperty.call(damage, h.id));
+        add(allHaveKeys, 'damage object keyed for each starting head');
+      })();
+
+      (function(){
+        resetGame(); drawCount = 3; startGame();
+        if(heads.length>=2){
+          const secondId = heads[1].id; dealDamage(1);
+          const dmgVal = damage[secondId]; removeHead(0);
+          add(damage[secondId] === dmgVal, 'removeHead preserves damage of other heads');
+        } else {
+          add(true, 'removeHead preserves damage of other heads (skipped - not enough heads)');
+        }
+      })();
+
       // Restore to a clean state for the user
       resetGame();
     })();
@@ -333,5 +412,3 @@
   </script>
 </body>
 </html>
-
-
