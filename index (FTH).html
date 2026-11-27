@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Face the Hydra (no React)</title>
+  <style>
+    :root{ --bg:#0f1115; --card:#171a21; --muted:#a0a6b8; --text:#e7ecf3; --accent:#7aa2ff; --danger:#ff6b6b; --ring:#ff6b6b; --card-width:240px; }
+    html,body{height:100%}
+    body{margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, 'Helvetica Neue', Arial, sans-serif; background:var(--bg); color:var(--text)}
+    .container{padding:16px; max-width:none; margin:0 auto}
+    h1{font-size:24px; margin:0 0 12px}
+    h2{font-size:18px; margin:16px 0 8px}
+    .panel{background:var(--card); border:1px solid #262b3a; border-radius:16px; padding:12px}
+    .toolbar{display:flex; gap:8px; flex-wrap:wrap; align-items:center}
+    .btn{background:#222836; color:var(--text); border:1px solid #2b3245; border-radius:10px; padding:8px 12px; cursor:pointer}
+    .btn.neck-tangle-ready{background:var(--accent); color:var(--bg); font-weight:700}
+    .btn[disabled]{opacity:.5; cursor:not-allowed}
+    .btn.small{padding:4px 8px; font-size:12px}
+    .btn.ghost{background:transparent}
+    .btn.danger{border-color:#5d2f32; color:#ffb3b3}
+    .input{background:#0e121a; border:1px solid #2b3245; color:var(--text); border-radius:10px; padding:6px 8px}
+    .input.w70{width:70px}
+    .input.w90{width:90px}
+    .grid{display:grid; gap:10px; grid-template-columns: repeat(3, minmax(0,1fr))}
+    @media (min-width:640px){.grid{grid-template-columns: repeat(4, minmax(0,1fr))}}
+    @media (min-width:900px){.grid{grid-template-columns: repeat(5, minmax(0,1fr))}}
+    @media (min-width:1200px){.grid{grid-template-columns: repeat(7, minmax(0,1fr))}}
+    .card{position:relative; background:#0e121a; border:1px solid #2b3245; border-radius:14px; padding:8px; cursor:pointer; box-sizing:border-box; overflow:hidden}
+    .card img{width:100%; height:auto; border-radius:10px; border:2px solid transparent}
+    .card img:hover{border-color:#ffe08a}
+    .selected{outline:2px solid #7aa2ff; box-shadow:0 0 0 2px rgba(122,162,255,.35) inset}
+    .ring{box-shadow:0 0 0 2px var(--ring)}
+    .tapped{transform: rotate(90deg) scale(.8); transform-origin:center; transition: transform .1s ease}
+    .muted{color:var(--muted)}
+    .list{list-style:disc; padding-left:18px; color:#c8cfdd}
+    .hovercard{position:absolute; z-index:10; background:white; border:1px solid #ddd; padding:4px; border-radius:6px; box-shadow:0 8px 24px rgba(0,0,0,.35); top:22px; left:0; display:none}
+    .hoverwrap:hover .hovercard{display:block}
+    .stat{font-weight:700}
+    .gy-items{display:flex; flex-wrap:wrap; gap:8px}
+    .gy-chip{position:relative; width:160px; border:1px solid #2b3245; border-radius:8px; padding:4px}
+    /* Exactly 5 cards per row for grids */
+    #heroGrid, #headsGrid, #graveyardGrid{ 
+      grid-template-columns: repeat(auto-fit, minmax(var(--card-width, 223px), var(--card-width, 223px)));
+      justify-content: center;
+    }
+    #heroGrid .card, #headsGrid .card, #graveyardGrid .card{ width:var(--card-width); margin:0; }
+    #heroGrid .card img, #headsGrid .card img, #graveyardGrid .card img{ width:100%; aspect-ratio: 63 / 88; height:auto; object-fit: cover; display:block; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Face the Hydra</h1>
+
+    <!-- HERO SELECTION -->
+    <section class="panel">
+      <h2>Select Up to 2 Hero Cards</h2>
+      <div id="heroGrid" class="grid"></div>
+      <div class="toolbar" style="margin-top:8px">
+        <button id="lockHeroes" class="btn">Lock In Heroes</button>
+        <span class="muted">Click a card to select/deselect. Max 2.</span>
+      </div>
+    </section>
+
+    <!-- CONTROLS -->
+    <section class="panel" style="margin-top:12px">
+      <div class="toolbar" style="justify-content:space-between">
+        <div class="toolbar" style="align-items:flex-start; flex-direction:column; gap:6px">
+          <div class="toolbar">
+            <button id="resetBtn" class="btn">Reset Game</button>
+            <button id="startBtn" class="btn">Start Game</button>
+            <label class="toolbar" style="gap:6px">
+              <span class="muted">Starting Heads:</span>
+              <button id="headsDec" class="btn medium">−</button>
+              <input id="drawCount" class="input w70" type="number" min="0" max="11" value="2" />
+              <button id="headsInc" class="btn medium">+</button>
+            </label>
+            <button id="hydraTurnBtn" class="btn">Hydra's Turn</button>
+
+            <!-- NEW: global Savage Vigor button -->
+            <button id="revealBtn" class="btn" disabled>Reveal Top Card (Savage Vigor / Neck Tangle)</button>
+          </div>
+          <!-- NEW: simple one-line message under buttons -->
+          <div id="revealMsg" class="muted" role="status"></div>
+        </div>
+
+        <div class="toolbar">
+          <span class="muted">Player Life:</span>
+          <button id="lifeDec" class="btn medium">−</button>
+          <input id="lifeInput" class="input w90" type="number" min="0" value="20" />
+          <button id="lifeInc" class="btn medium">+</button>
+          <span class="stat">Total: <span id="lifeLabel">20</span></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- HEADS -->
+    <section class="panel" style="margin-top:12px">
+      <h2>Hydra Heads on Battlefield</h2>
+      <div id="headsGrid" class="grid"></div>
+    </section>
+
+    <!-- GRAVEYARD -->
+    <section class="panel" style="margin-top:12px">
+      <div class="toolbar" style="justify-content:space-between; margin-bottom:8px">
+        <h2 style="margin:0">Graveyard</h2>
+        <div class="toolbar">
+          <span class="muted">Cards: <span id="gyCount">0</span><span id="gyShown"></span></span>
+          <button id="gyToggle" class="btn small">Expand</button>
+        </div>
+      </div>
+      <div id="graveyardGrid" class="grid"></div>
+    </section>
+
+    <!-- RULES -->
+    <section class="panel" style="margin-top:12px" aria-labelledby="hydraRules">
+      <h2 id="hydraRules">Face the Hydra Rules</h2>
+      <ol class="list">
+        <li><strong>Set up.</strong> Use your own Magic deck and start at 20 life per player. Choose up to two optional Hero cards, set the number of Starting Heads, then click <strong>Start Game</strong>. The tracker puts that many regular Hydra Heads on the battlefield and shuffles the remaining Hydra cards.</li>
+        <li><strong>Take your turn.</strong> You go first and skip your first draw. Your creatures can attack Heads directly, and multiple creatures can attack the same Head. If the Hydra would take damage or lose life, deal that much damage to a Head you choose instead.</li>
+        <li><strong>Remove a Head.</strong> Use <strong>Kill</strong> when a Head dies or would leave the battlefield. The tracker sends it to the graveyard and reveals up to two cards. New Heads enter the battlefield and revealed sorceries go directly to the graveyard without resolving. Apply the removed Head’s Hero’s Reward to each player.</li>
+        <li><strong>Take the Hydra’s turn.</strong> Untap its Heads unless an effect keeps them tapped, then click <strong>Hydra’s Turn</strong> to reveal its next card. A Head enters the battlefield. Grown from the Stump resolves automatically when cast. Resolve other sorceries manually using the tracker prompts. If Neck Tangle is cast with fewer than five Heads, click <strong>Reveal Top Card (Savage Vigor / Neck Tangle)</strong>. Afterward, each player takes 1 damage per untapped regular Head and 2 per untapped elite Head. Adjust <strong>Player Life</strong> manually.</li>
+        <li><strong>Resolve end-step abilities.</strong> Each Savage Vigor Head that triggers reveals and casts another card using <strong>Reveal Top Card (Savage Vigor / Neck Tangle)</strong>. Each Snapping Fang Head that triggers deals 1 damage to every player, and each Shrieking Titan Head that triggers makes every player discard a card. Resolve these abilities manually.</li>
+        <li><strong>Win the challenge.</strong> If there are no Heads on the battlefield at the end of any turn, the players win.</li>
+      </ol>
+      <p class="muted">Make the Hydra’s choices yourself. Ignore effects that would make it draw or discard, along with actions it cannot perform. The Damage counter is a manual aid and does not clear automatically at the end of a turn.</p>
+      <p><a href="https://mtgpl.readthedocs.io/en/latest/THS_hydra.html" target="_blank" rel="noopener noreferrer">Full challenge rules and card effects</a></p>
+    </section>
+  </div>
+
+  <script>
+    // ==== Data from JSX ====
+    const heroCardNames = [
+      "Axe of the Warmonger", "Bow of the Hunter", "Cloak of the Philosopher", "Lash of the Tyrant", "Spear of the General",
+      "The Avenger", "The Champion", "The Destined", "The Explorer", "The General", "The Harvester", "The Hunter",
+      "The Philosopher", "The Protector", "The Provider", "The Savant", "The Slayer", "The Tyrant",
+      "The Vanquisher", "The Warmonger", "The Warrior"
+    ];
+
+    const initialDeck = [
+      ...Array(11).fill({ name: "Hydra Head", type: "Head" }),
+      ...Array(4).fill({ name: "Ravenous Brute Head", type: "Head" }),
+      { name: "Savage Vigor Head", type: "Head" },
+      { name: "Snapping Fang Head", type: "Head" },
+      { name: "Shrieking Titan Head", type: "Head" },
+      ...Array(5).fill({ name: "Disorienting Glower", type: "Sorcery" }),
+      ...Array(5).fill({ name: "Distract the Hydra", type: "Sorcery" }),
+      ...Array(4).fill({ name: "Grown from the Stump", type: "Sorcery" }),
+      ...Array(4).fill({ name: "Hydra’s Impenetrable Hide", type: "Sorcery" }),
+      ...Array(3).fill({ name: "Neck Tangle", type: "Sorcery" }),
+      ...Array(4).fill({ name: "Noxious Hydra Breath", type: "Sorcery" }),
+      ...Array(2).fill({ name: "Strike the Weak Spot", type: "Sorcery" }),
+      ...Array(5).fill({ name: "Swallow the Hero Whole", type: "Sorcery" }),
+      ...Array(4).fill({ name: "Torn Between Heads", type: "Sorcery" }),
+      ...Array(6).fill({ name: "Unified Lunge", type: "Sorcery" })
+    ];
+
+    function shuffle(arr){ const a = arr.slice(); for(let i=a.length-1;i>0;i--){ const j = Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+
+    // ==== State ====
+    let neckTanglePending = false;
+    let deck = shuffle(initialDeck.map(c=>({ ...c })));
+    let heads = []; // battlefield heads with {id, name, type, tapped}
+    let graveyard = []; // array of cards
+    let playerLife = 20;
+    let drawCount = 2;
+    let selectedHeroes = [];
+    let heroSelectionLocked = false;
+    let tappedHeroes = {}; // name -> bool
+    let damage = {}; // headId -> number
+    let idCounter = 0;
+    let graveyardCollapsed = true; // collapsed by default
+
+    // ==== DOM ====
+    const heroGrid = document.getElementById('heroGrid');
+    const headsGrid = document.getElementById('headsGrid');
+    const graveyardGrid = document.getElementById('graveyardGrid');
+
+    const lockHeroesBtn = document.getElementById('lockHeroes');
+    const resetBtn = document.getElementById('resetBtn');
+    const startBtn = document.getElementById('startBtn');
+    const hydraTurnBtn = document.getElementById('hydraTurnBtn');
+
+    const lifeInput = document.getElementById('lifeInput');
+    const lifeLabel = document.getElementById('lifeLabel');
+    const lifeInc = document.getElementById('lifeInc');
+    const lifeDec = document.getElementById('lifeDec');
+    const drawCountInput = document.getElementById('drawCount');
+    const headsInc = document.getElementById('headsInc');
+    const headsDec = document.getElementById('headsDec');
+
+    const gyToggle = document.getElementById('gyToggle');
+    const gyCount = document.getElementById('gyCount');
+    const gyShown = document.getElementById('gyShown');
+
+    // NEW: Savage Vigor controls
+    const revealBtn = document.getElementById('revealBtn');
+    const revealMsg = document.getElementById('revealMsg');
+
+    // ==== Helpers ====
+    function cardImgUrl(name){
+      // Keep 'version=normal' because 'version=large' can 404 for some special cards
+      return `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(name)}&format=image&version=normal`;
+    }
+    function cardImgUrlFallback(name){
+      return `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(name)}&format=image&version=normal`;
+    }
+    function setCardImage(imgEl, name){
+      imgEl.loading = 'lazy';
+      imgEl.src = cardImgUrl(name);
+      imgEl.onerror = () => {
+        imgEl.onerror = null; // avoid loops
+        imgEl.src = cardImgUrlFallback(name);
+      };
+    }
+    function assignId(card){ return { ...card, id: idCounter++, tapped:false }; }
+
+    // Render functions
+    function renderHeroes(){
+      heroGrid.innerHTML = '';
+      heroCardNames.forEach(name=>{
+        if(heroSelectionLocked && !selectedHeroes.includes(name)) return;
+        const item = document.createElement('div'); item.className = 'card'; item.dataset.name = name;
+        const img = document.createElement('img'); setCardImage(img, name); img.alt = name; if(tappedHeroes[name]) img.classList.add('tapped'); item.appendChild(img);
+        const label = document.createElement('div'); label.style.textAlign='center'; label.style.marginTop='6px'; label.style.fontSize='12px'; label.style.fontWeight='700'; label.textContent = name; item.appendChild(label);
+        if(selectedHeroes.includes(name)) item.classList.add('selected');
+        item.onclick = ()=>{ if(heroSelectionLocked) return; toggleHero(name); };
+        if(heroSelectionLocked){
+          const row = document.createElement('div'); row.style.display='flex'; row.style.justifyContent='center'; row.style.gap='6px'; row.style.marginTop='6px';
+          const tapBtn = document.createElement('button'); tapBtn.className='btn small'; tapBtn.textContent = tappedHeroes[name] ? 'Untap' : 'Tap'; tapBtn.onclick=(e)=>{ e.stopPropagation(); toggleTapHero(name); }; row.appendChild(tapBtn);
+          item.appendChild(row);
+        }
+        heroGrid.appendChild(item);
+      });
+    }
+
+    function renderHeads(){
+      headsGrid.innerHTML='';
+      heads.forEach((card, index)=>{
+        const wrap = document.createElement('div'); wrap.className='card'; wrap.style.cursor='default';
+        const img = document.createElement('img'); setCardImage(img, card.name); img.alt = card.name; if(damage[card.id]) img.classList.add('ring'); if(card.tapped) img.classList.add('tapped');
+        wrap.appendChild(img);
+        const title = document.createElement('div'); title.textContent = card.name; title.style.textAlign='center'; title.style.fontSize='12px'; title.style.fontWeight='700'; wrap.appendChild(title);
+        const row = document.createElement('div'); row.style.display='flex'; row.style.gap='6px'; row.style.marginTop='6px'; row.style.justifyContent='space-between';
+        const tapBtn = document.createElement('button'); tapBtn.className='btn small'; tapBtn.textContent = card.tapped ? 'Untap' : 'Tap'; tapBtn.onclick=()=> toggleTap(index); row.appendChild(tapBtn);
+        const dmgBtn = document.createElement('button'); dmgBtn.className='btn small'; dmgBtn.textContent = 'Damage'; dmgBtn.onclick=()=> dealDamage(index); row.appendChild(dmgBtn);
+        const killBtn = document.createElement('button'); killBtn.className='btn small danger'; killBtn.textContent = 'Kill'; killBtn.onclick=()=> removeHead(index); row.appendChild(killBtn);
+        wrap.appendChild(row);
+        const dmg = document.createElement('div'); dmg.className='muted'; dmg.style.textAlign='center'; dmg.style.fontSize='12px'; dmg.textContent = `Damage: ${damage[card.id]||0}`; wrap.appendChild(dmg);
+        headsGrid.appendChild(wrap);
+      });
+    }
+
+    function renderGraveyard(){
+      // Show every graveyard card as a standard card (latest first).
+      // When collapsed, show only the most recent 12.
+      graveyardGrid.innerHTML = '';
+      gyCount.textContent = graveyard.length.toString();
+
+      const items = [...graveyard].reverse(); // latest first
+      const toShow = graveyardCollapsed ? items.slice(0, 12) : items;
+
+      if (graveyardCollapsed && items.length > 12) {
+        gyShown.textContent = ` (showing ${toShow.length} of ${items.length})`;
+      } else {
+        gyShown.textContent = '';
+      }
+
+      gyToggle.textContent = graveyardCollapsed ? 'Expand' : 'Collapse';
+
+      toShow.forEach(c=>{
+        const wrap = document.createElement('div'); wrap.className='card'; wrap.style.cursor='default';
+        const img = document.createElement('img'); setCardImage(img, c.name); img.alt = c.name;
+        wrap.appendChild(img);
+        const title = document.createElement('div'); title.textContent = c.name; title.style.textAlign='center'; title.style.fontSize='12px'; title.style.fontWeight='700';
+        wrap.appendChild(title);
+        graveyardGrid.appendChild(wrap);
+      });
+    }
+
+    function renderLife(){ lifeLabel.textContent = playerLife; lifeInput.value = playerLife; }
+
+    function updateRevealButtonState(){
+      const hasSavage = heads.some(h => h.name === 'Savage Vigor Head');
+      const canRevealForNeckTangle = neckTanglePending && deck.length > 0;
+      revealBtn.disabled = !(canRevealForNeckTangle || (hasSavage && deck.length > 0));
+      revealBtn.classList.toggle('neck-tangle-ready', canRevealForNeckTangle);
+      hydraTurnBtn.disabled = canRevealForNeckTangle;
+    }
+
+    function renderAll(){ 
+      renderHeroes(); 
+      renderHeads(); 
+      renderGraveyard(); 
+      renderLife(); 
+      updateRevealButtonState();
+    }
+
+    // ==== Behavior from JSX ====
+    function toggleHero(hero){
+      if(heroSelectionLocked) return;
+      const i = selectedHeroes.indexOf(hero);
+      if(i>=0){ selectedHeroes.splice(i,1); }
+      else if(selectedHeroes.length < 2){ selectedHeroes.push(hero); }
+      renderHeroes();
+    }
+    function toggleTapHero(heroName){ tappedHeroes[heroName] = !tappedHeroes[heroName]; renderHeroes(); }
+
+    function startGame(){
+      neckTanglePending = false;
+      // Build a fresh shuffled deck, take N base Hydra Heads and remove them from deck
+      const fresh = shuffle(initialDeck.map(c=>({ ...c })));
+      const base = [];
+      const rest = [];
+      let taken = 0;
+      for(const c of fresh){
+        if(c.name === 'Hydra Head' && taken < Number(drawCount)) { base.push(assignId(c)); taken++; }
+        else { rest.push(c); }
+      }
+      heads = base;
+      damage = {}; base.forEach(h=> damage[h.id]=0);
+      deck = shuffle(rest);
+      graveyard = [];
+      renderAll();
+      revealMsg.textContent = ''; // clear message on start
+    }
+
+    function resetGame(){
+      neckTanglePending = false;
+      deck = shuffle(initialDeck.map(c=>({ ...c })));
+      heads = [];
+      graveyard = [];
+      playerLife = 20;
+      drawCount = 2;
+      selectedHeroes = [];
+      heroSelectionLocked = false;
+      tappedHeroes = {};
+      damage = {};
+      idCounter = 0;
+      revealMsg.textContent = '';
+      renderAll();
+    }
+
+    function hydraTurn(){
+      if (neckTanglePending) return;
+      revealHydraCard("Hydra's Turn");
+    }
+
+    function revealHydraCard(source){
+      if (deck.length === 0) return;
+      const top = deck.shift();
+      neckTanglePending = top.name === 'Neck Tangle' && heads.length < 5 && deck.length > 0;
+      if (top.type === 'Sorcery') {
+        graveyard.push(top);
+        revealMsg.textContent = `${source} revealed ${top.name} → sent to Graveyard`;
+        if (top.name === 'Grown from the Stump') {
+          revealMsg.textContent += ' → ' + resolveGrownFromTheStump();
+        } else if (top.name === 'Neck Tangle') {
+          revealMsg.textContent += `. Heads on the battlefield: ${heads.length}. `;
+          if (heads.length >= 5) {
+            revealMsg.textContent += "Tap two Heads and keep them tapped during the Hydra's next untap step.";
+          } else if (neckTanglePending) {
+            revealMsg.textContent += 'Click Reveal Top Card (Savage Vigor / Neck Tangle) to cast the next card.';
+          } else {
+            revealMsg.textContent += 'The Hydra deck is empty.';
+          }
+        }
+      } else {
+        const head = assignId(top);
+        heads.push(head);
+        damage[head.id] = 0;
+        revealMsg.textContent = `${source} revealed ${head.name} → added to Battlefield`;
+      }
+      renderAll();
+    }
+
+    function resolveGrownFromTheStump(){
+      const regularHeadIndices = [];
+      for (let i = graveyard.length - 1; i >= 0 && regularHeadIndices.length < 2; i--) {
+        if (graveyard[i].name === 'Hydra Head') regularHeadIndices.push(i);
+      }
+
+      if (regularHeadIndices.length === 2) {
+        for (const index of regularHeadIndices) {
+          const [card] = graveyard.splice(index, 1);
+          heads.push(assignId(card));
+        }
+        return 'Returned two Hydra Heads from the graveyard.';
+      }
+
+      let sorceriesRevealed = 0;
+      while (deck.length > 0) {
+        const card = deck.shift();
+        if (card.type === 'Head') {
+          heads.push(assignId(card));
+          return `Put ${card.name} onto the battlefield. Sorceries sent to the graveyard: ${sorceriesRevealed}.`;
+        }
+        graveyard.push(card);
+        sorceriesRevealed++;
+      }
+      return `No Head found. Sorceries sent to the graveyard: ${sorceriesRevealed}.`;
+    }
+
+    function removeHead(index){
+      const head = heads[index]; if(!head) return;
+      const remaining = heads.slice(0,index).concat(heads.slice(index+1));
+      const draws = deck.splice(0,2);
+      const newHeads = [];
+      const gyAdds = [head];
+      draws.forEach(c=>{ if(c.type==='Head'){ newHeads.push(assignId(c)); } else { gyAdds.push(c); } });
+      heads = remaining.concat(newHeads);
+      gyAdds.forEach(c=> graveyard.push(c));
+      const newDamage = {}; heads.forEach(h=> newDamage[h.id] = damage[h.id]||0); damage = newDamage;
+      revealMsg.textContent = `Removed ${head.name}. Drew ${draws.length} card(s).`;
+      renderAll();
+    }
+
+    function dealDamage(index){ const head = heads[index]; if(!head) return; damage[head.id] = (damage[head.id]||0) + 1; renderHeads(); updateRevealButtonState(); }
+    function toggleTap(index){ const head = heads[index]; if(!head) return; head.tapped = !head.tapped; renderHeads(); updateRevealButtonState(); }
+
+    // ==== Wire up controls ====
+    lockHeroesBtn.addEventListener('click', ()=>{ heroSelectionLocked = true; renderHeroes(); });
+    resetBtn.addEventListener('click', resetGame);
+    startBtn.addEventListener('click', startGame);
+    hydraTurnBtn.addEventListener('click', hydraTurn);
+
+    lifeInc.addEventListener('click', ()=>{ playerLife += 1; renderLife(); });
+    lifeDec.addEventListener('click', ()=>{ playerLife = Math.max(0, playerLife-1); renderLife(); });
+    lifeInput.addEventListener('input', e=>{ const v = Number(e.target.value)||0; playerLife = Math.max(0, v); renderLife(); });
+    drawCountInput.addEventListener('input', e=>{ const v = Number(e.target.value)||0; drawCount = Math.max(0, Math.min(11, v)); });
+
+    // Minimal functionality for Starting Heads + / −
+    function clamp(n){ return Math.max(0, Math.min(11, n)); }
+    if (headsInc) headsInc.addEventListener('click', ()=>{
+      drawCount = clamp(drawCount + 1);
+      drawCountInput.value = drawCount;
+    });
+    if (headsDec) headsDec.addEventListener('click', ()=>{
+      drawCount = clamp(drawCount - 1);
+      drawCountInput.value = drawCount;
+    });
+
+    // Graveyard toggle
+    gyToggle.addEventListener('click', ()=>{
+      graveyardCollapsed = !graveyardCollapsed;
+      renderGraveyard();
+    });
+
+    revealBtn.addEventListener('click', ()=>{
+      if (revealBtn.disabled) return;
+      revealHydraCard(neckTanglePending ? 'Neck Tangle' : 'Savage Vigor');
+    });
+
+    // Initial render
+    renderAll();
+
+    // Expose a tiny testing surface (optional)
+    window.hydraTracker = { startGame, resetGame, hydraTurn, removeHead, dealDamage, toggleHero };
+  </script>
+</body>
+</html>
